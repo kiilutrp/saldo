@@ -3,6 +3,7 @@ import * as api from './api.js';
 import { VAT_RATES, KMD_ROW, MONTHS, r2, eur, n2, num, esc, iso, today, addDays, fd, monthKey, monthLabel, lastDay,
   daysBetween, refNo, calcLines, expCalc, nextInvoiceNo, download } from './util.js';
 import { ublXML, einvCheck } from './einvoice.js';
+import { invoiceDoc } from './invoice-doc.js';
 import { bankRows, matchBank } from './bank.js';
 import { balances, bal, profit, vatMonth, kmdInf } from './reports.js';
 
@@ -445,6 +446,20 @@ function vSettings() {
     ${canWrite() ? '<div class="row"><button class="btn primary" type="submit">Salvesta</button></div>' : ''}
   </form></section>
 
+  <section class="panel"><header><h2>Arve kujundus</h2><button class="btn sm" data-act="design-preview">Vaata näidist</button></header>
+    <form class="form pad" data-form="design">
+      <div class="row" style="gap:24px;align-items:flex-start">
+        <div class="field"><span>Logo</span>
+          <div class="row">${c.logo ? `<img src="${esc(c.logo)}" alt="Logo" style="max-height:56px;max-width:180px;border:1px solid var(--line);border-radius:6px;padding:6px;background:#fff">` : '<span class="muted small">Logo pole lisatud</span>'}
+          ${canWrite() ? `<label class="btn sm" for="logoFile">${c.logo ? 'Vaheta' : 'Lisa logo'}<input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden></label>${c.logo ? '<button type="button" class="btn sm ghost" data-act="logo-remove">Eemalda</button>' : ''}` : ''}</div>
+          <span class="muted small">PNG, JPG või SVG. Läbipaistva taustaga logo näeb kõige parem välja.</span></div>
+        <label class="field"><span>Arve põhivärv</span><span class="row"><input type="color" id="dColor" name="invoice_color" value="${esc(c.invoice_color || '#1C5DC2')}" style="width:56px;height:36px;padding:2px" ${dis}>
+          ${['#1C5DC2', '#0F766E', '#7C3AED', '#B4472D', '#1F2937'].map((col) => `<button type="button" class="swatch" data-act="swatch" data-c="${col}" style="background:${col}" aria-label="Värv ${col}"></button>`).join('')}</span></label>
+      </div>
+      <div class="err" id="fErr"></div>
+      ${canWrite() ? '<div class="row"><button class="btn primary" type="submit">Salvesta värv</button></div>' : ''}
+    </form></section>
+
   <section class="panel"><header><h2>Perioodi sulgemine</h2></header><form class="form pad" data-form="lock">
     <p class="note">Pärast deklaratsioonide esitamist sulge periood. Siis ei saa kogemata lisada kandeid, mis muudaksid juba esitatud numbreid.</p>
     <div class="row"><label class="field" style="max-width:220px"><span>Suletud kuni (kaasa arvatud)</span><input id="lockD" name="lock_date" type="date" value="${c.lock_date || ''}" ${owner ? '' : 'disabled'}></label>
@@ -557,22 +572,6 @@ async function saveInvoice(f, mode) {
   }, mode === 'issue' ? 'Arve kinnitatud ja kirjendatud' : 'Mustand salvestatud', (id) => { closeModal(); openInvoice(id); });
 }
 
-function invoicePaper(i) {
-  const c = D().company, cl = contactOf(i) || {}, L = D().linesBy[i.id] || [], cc = calcLines(L);
-  const ref = i.ref_no || refNo(i.no), orig = i.credit_of ? D().invById[i.credit_of] : null;
-  return `<div class="paper">
-    <div class="top"><div><h3>${i.kind === 'credit' ? 'Kreeditarve' : 'Arve'} ${esc(i.no)}</h3><div class="muted" style="margin-top:4px">${esc(c.name)}</div>${orig ? `<div class="muted small">Arvele ${esc(orig.no)} (${fd(orig.date)})</div>` : ''}</div>
-      <dl class="kv"><dt>Kuupäev</dt><dd class="mono">${fd(i.date)}</dd>${i.kind === 'credit' ? '' : `<dt>Maksetähtaeg</dt><dd class="mono">${fd(i.due)}</dd><dt>Viitenumber</dt><dd class="mono">${esc(ref)}</dd>`}</dl></div>
-    <div class="top"><div><span class="label">Maksja</span><div style="margin-top:4px"><b>${esc(i.contact_name)}</b>${cl.regcode ? `<br>Reg. kood ${esc(cl.regcode)}` : ''}${cl.vatno ? `<br>KMKR ${esc(cl.vatno)}` : ''}${cl.address ? `<br>${esc(cl.address)}` : ''}</div></div>
-      <div><span class="label">Müüja</span><div style="margin-top:4px">${c.regcode ? `Reg. kood ${esc(c.regcode)}<br>` : ''}${c.vatno ? `KMKR ${esc(c.vatno)}<br>` : ''}${c.address ? `${esc(c.address)}<br>` : ''}${esc(c.email || '')}</div></div></div>
-    <div class="tbl"><table><thead><tr><th>Kirjeldus</th><th class="num">Kogus</th><th class="num">Hind</th><th class="num">KM</th><th class="num">Summa</th></tr></thead><tbody>
-      ${L.map((l) => `<tr><td>${esc(l.description)}</td><td class="num">${String(+l.qty).replace('.', ',')} ${esc(l.unit || '')}</td><td class="num">${n2(l.price)}</td><td class="num">${+l.vat_rate}%</td><td class="num">${n2(num(l.qty) * num(l.price))}</td></tr>`).join('')}
-    </tbody></table></div>
-    <div class="totals"><span class="muted">Summa km-ta</span><span class="num">${eur(cc.net)}</span>${Object.keys(cc.by).filter((r) => +r > 0).map((r) => `<span class="muted">Käibemaks ${r}%</span><span class="num">${eur(cc.by[r].vat)}</span>`).join('')}<span class="g">${i.kind === 'credit' ? 'Kokku' : 'Kokku tasuda'}</span><span class="num g">${eur(cc.gross)}</span></div>
-    ${i.notes ? `<p style="margin:0">${esc(i.notes)}</p>` : ''}
-    ${i.kind === 'credit' ? '' : `<div class="muted small" style="border-top:1px solid var(--line);padding-top:10px">Palume tasuda ${c.bank ? `${esc(c.bank)} ` : ''}arveldusarvele <b class="mono">${esc(c.iban || 'IBAN lisamata')}</b>, märkides viitenumbri ${esc(ref)}.</div>`}
-  </div>`;
-}
 function openInvoice(id) {
   const i = D().invById[id];
   if (!i) return;
@@ -588,7 +587,7 @@ function openInvoice(id) {
     if (x.open > 0.004) actions += `<button class="btn primary" data-act="pay-inv" data-id="${id}">Lisa laekumine</button>`;
     if (!x.paid) left = `<span class="row" id="delZone"><button class="btn danger" data-act="credit-ask" data-id="${id}">Koosta kreeditarve</button></span>`;
   }
-  openModal(`${mHead(`${i.kind === 'credit' ? 'Kreeditarve' : 'Arve'} ${esc(i.no)} ${pill(x.st, i.due)}`)}<div class="body">${invoicePaper(i)}
+  openModal(`${mHead(`${i.kind === 'credit' ? 'Kreeditarve' : 'Arve'} ${esc(i.no)} ${pill(x.st, i.due)}`)}<div class="body"><iframe class="docframe" title="Arve eelvaade" srcdoc="${esc(invoiceDocFor(i))}"></iframe>
     ${i.status === 'issued' && i.kind === 'invoice' ? `<p class="muted small" style="margin:10px 0 0">Laekunud ${eur(x.paid)} · tasumata ${eur(Math.max(0, x.open))}</p>` : ''}${paysHtml}${i.status === 'issued' ? einvPanel(i) : ''}
     <div class="err" id="fErr"></div></div><footer>${left || '<span></span>'}<div class="row">${actions}</div></footer>`);
 }
@@ -723,11 +722,16 @@ function accountForm() {
 // ====================================================================
 // Failid: printimine, e-arve, eksport, import
 // ====================================================================
+function invoiceDocFor(i) {
+  const x = invInfo(i);
+  const pays = D().payments.filter((p) => p.invoice_id === i.id && p.status === 'active').map((p) => p.date).sort();
+  return invoiceDoc(i, D().linesBy[i.id] || [], D().company, contactOf(i) || {},
+    { origNo: i.credit_of ? D().invById[i.credit_of]?.no : '', paidDate: x.st === 'paid' ? pays[pays.length - 1] : null, accent: D().company.invoice_color });
+}
 function printInvoice(i) {
-  const css = [...document.querySelectorAll('link[rel=stylesheet]')].map((l) => `<link rel="stylesheet" href="${l.href}">`).join('');
   const w = window.open('', '_blank');
   if (!w) { toast('Brauser blokeeris uue akna. Luba hüpikaknad selle lehe jaoks.'); return; }
-  w.document.write(`<!doctype html><html lang="et"><head><meta charset="utf-8"><title>${i.kind === 'credit' ? 'Kreeditarve' : 'Arve'} ${esc(i.no)}</title>${css}<style>:root{color-scheme:light}body{background:#fff;padding:32px;max-width:820px;margin:0 auto}.paper{border:none;padding:0}@media print{body{padding:0}}</style></head><body data-theme="light">${invoicePaper(i)}<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+  w.document.write(invoiceDocFor(i).replace('</body>', '<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body>'));
   w.document.close();
 }
 function ledgerCSV() {
@@ -735,6 +739,30 @@ function ledgerCSV() {
   const out = ['Kande nr;Kuupäev;Kirjeldus;Konto;Konto nimi;Deebet;Kreedit'];
   for (const l of D().ledger) out.push([l.no, fd(l.date), q(l.description), l.account, q(l.account_name), num(l.debit) ? n2(l.debit).replace(/\s/g, '') : '', num(l.credit) ? n2(l.credit).replace(/\s/g, '') : ''].join(';'));
   return '﻿' + out.join('\r\n');
+}
+/** Vähendab logo suuruseks max 600×240 px ja salvestab selle ettevõtte andmetesse. */
+async function uploadLogo(file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Fail on liiga suur (üle 5 MB).'); return; }
+  let data;
+  if (file.type === 'image/svg+xml') {
+    const text = await file.text();
+    if (/<script|on\w+\s*=|javascript:/i.test(text)) { toast('See SVG-fail sisaldab skripte. Kasuta PNG- või JPG-faili.'); return; }
+    data = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(text)));
+  } else {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+      const k = Math.min(1, 600 / img.width, 240 / img.height);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      data = cv.toDataURL('image/png');
+      if (data.length > 380000) data = cv.toDataURL('image/jpeg', 0.85);
+    } catch { toast('Pilti ei õnnestunud lugeda.'); return; } finally { URL.revokeObjectURL(url); }
+  }
+  if (data.length > 400000) { toast('Logo on liiga suur. Proovi väiksemat faili.'); return; }
+  await act(() => api.updateCompany(S.cid, { logo: data }), 'Logo salvestatud');
 }
 async function importFile(file) {
   let data;
@@ -845,6 +873,16 @@ const ACTS = {
   },
   'bank-exp': (b) => { const r = S.bank.rows[+b.dataset.ix]; S._bankIx = +b.dataset.ix; expenseForm(null, { supplier: r.partner, date: r.date, due: r.date, gross: Math.abs(r.amount), description: r.desc, paid: true, paid_date: r.date }); },
   'new-account': () => accountForm(),
+  swatch: (b) => { const el = document.getElementById('dColor'); if (el) el.value = b.dataset.c; },
+  'logo-remove': () => act(() => api.updateCompany(S.cid, { logo: null }), 'Logo eemaldatud'),
+  'design-preview': () => {
+    const c = { ...D().company, invoice_color: document.getElementById('dColor')?.value || D().company.invoice_color };
+    const t = today();
+    const sample = { no: nextInvoiceNo(D().invoices, c.invoice_prefix), kind: 'invoice', date: t, due: addDays(t, c.payment_term_days ?? 14), contact_name: 'Näidisklient OÜ', buyer_ref: '', notes: 'Täname koostöö eest!' };
+    const lines = [{ description: 'Teenus', qty: 10, unit: 'h', price: 50, vat_rate: c.vat_payer ? 24 : 0 }, { description: 'Materjalid', qty: 2, unit: 'tk', price: 35, vat_rate: c.vat_payer ? 24 : 0 }];
+    const html = invoiceDoc(sample, lines, c, { address: 'Näidistänav 5, 10111 Tallinn', regcode: '12345678' }, { accent: c.invoice_color });
+    openModal(`${mHead('Arve näidis')}<div class="body"><iframe class="docframe" title="Arve näidis" srcdoc="${esc(html)}"></iframe></div>`);
+  },
   'toggle-account': (b) => { const a = D().acc[b.dataset.a]; act(() => api.updateAccount(S.cid, a.code, { active: !a.active }), a.active ? 'Konto peidetud' : 'Konto taastatud'); },
   'export-csv': () => download(`pearaamat-${today()}.csv`, ledgerCSV(), 'text/csv'),
   'export-json': () => { const { acc, linesBy, paidInv, paidExp, contactById, invById, entries, reversed, ...rest } = D(); download(`saldo-varukoopia-${today()}.json`, JSON.stringify({ format: 'saldo-backup', exported: new Date().toISOString(), ...rest }, null, 1), 'application/json'); },
@@ -938,6 +976,7 @@ document.addEventListener('submit', async (e) => {
         payment_term_days: Number(f.payment_term_days.value) || 0, vat_payer: f.vat_payer.checked };
       return await act(() => api.updateCompany(S.cid, patch), 'Seaded salvestatud');
     }
+    if (t === 'design') return await act(() => api.updateCompany(S.cid, { invoice_color: f.invoice_color.value }), 'Arve värv salvestatud');
     if (t === 'lock') return await act(() => api.updateCompany(S.cid, { lock_date: f.lock_date.value || null }), f.lock_date.value ? `Periood suletud kuni ${fd(f.lock_date.value)}` : 'Periood avatud');
     if (t === 'mfa-verify') {
       try { await api.verifyTotp(S.mfa.enrolling.id, f.code.value); S.mfa.enrolling = null; await refreshMfa(); toast('Kaheastmeline kinnitus on sees'); render(); }
@@ -959,6 +998,7 @@ document.addEventListener('change', (e) => {
   const el = e.target;
   if (el.id === 'bankFile') { loadBankFile(el.files[0]); return; }
   if (el.id === 'impFile') { importFile(el.files[0]); el.value = ''; return; }
+  if (el.id === 'logoFile') { uploadLogo(el.files[0]); el.value = ''; return; }
   if (el.form?.dataset.form === 'expense') { recalcExpense(el.form); return; }
   const b = el.dataset?.bind;
   if (!b) return;

@@ -19,7 +19,7 @@ def sh(args, **kw):
 # Puhas andmebaas
 sh(P + ['-c', 'drop database if exists saldo_e2e'], stdout=subprocess.DEVNULL)
 sh(P + ['-c', 'create database saldo_e2e'], stdout=subprocess.DEVNULL)
-for f in ['tests/supabase_stub.sql', 'supabase/migrations/0001_saldo.sql', 'supabase/migrations/0002_storage.sql']:
+for f in ['tests/supabase_stub.sql'] + sorted('supabase/migrations/' + m for m in os.listdir(os.path.join(ROOT, 'supabase/migrations'))):
     sh(P + ['-d', 'saldo_e2e', '-f', f])
 
 srv = subprocess.Popen([sys.executable, os.path.join(HERE, 'server.py'), str(PORT)], env={**env, 'PGDATABASE': 'saldo_e2e'})
@@ -71,6 +71,16 @@ try:
         page.fill('#coI', 'EE382200221020145685'); page.fill('#coB', 'Swedbank'); page.fill('#coE', 'angela@test.ee')
         page.get_by_role('button', name='Salvesta', exact=True).first.click()
         toast(page, 'Seaded salvestatud')
+
+        step('Arve kujundus: logo ja värv')
+        page.set_input_files('#logoFile', os.path.join(HERE, 'logo.png'))
+        toast(page, 'Logo salvestatud')
+        page.get_by_role('button', name='Värv #1F2937').click()
+        page.get_by_role('button', name='Salvesta värv').click()
+        toast(page, 'Arve värv salvestatud')
+        page.get_by_role('button', name='Vaata näidist').click()
+        expect(page.frame_locator('.docframe').locator('img.logo')).to_be_visible()
+        page.get_by_role('button', name='Sulge').click()
 
         step('Algsaldo käsitsi kandena')
         page.get_by_role('button', name='Pearaamat').click()
@@ -216,7 +226,7 @@ try:
         page.get_by_role('button', name='Koosta kreeditarve').click()
         page.locator('#sheet').get_by_role('button', name='Koosta kreeditarve').click()
         toast(page, 'Kreeditarve koostatud')
-        expect(page.locator('#sheet')).to_contain_text('124,00')
+        expect(page.frame_locator('.docframe').locator('body')).to_contain_text('124,00')
         page.get_by_role('button', name='Sulge').click()
 
         step('Import prototüübist')

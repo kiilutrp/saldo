@@ -9,4 +9,5 @@ $P -c "create database saldo_test" >/dev/null
 $P -d saldo_test -f tests/supabase_stub.sql
 $P -d saldo_test -f supabase/migrations/0001_saldo.sql
 $P -d saldo_test -f supabase/migrations/0002_storage.sql
+$P -d saldo_test -f supabase/migrations/0003_invoice_design.sql
 $P -d saldo_test -f tests/test_db.sql 2>&1 | grep -E "OK|FAIL|ERROR|LÄBITUD|import:" | sed 's/^psql:[^ ]* NOTICE:  //'
