@@ -229,6 +229,32 @@ try:
         expect(page.frame_locator('.docframe').locator('body')).to_contain_text('124,00')
         page.get_by_role('button', name='Sulge').click()
 
+        step('Hinnapakkumine eraisikule → arve')
+        page.get_by_role('button', name='Hinnapakkumised').click()
+        page.get_by_role('button', name='Uus pakkumine').click()
+        expect(page.locator('#fqN')).to_have_value(re.compile(r'^HP-\d{4}-001$'))
+        page.fill('#fqC', 'Mari Maasikas'); page.check('#fqP')
+        ln = page.locator('#lnBody tr').first
+        ln.locator('[name=description]').fill('Kraavi kaevamine'); ln.locator('[name=qty]').fill('40'); ln.locator('[name=unit]').fill('m'); ln.locator('[name=price]').fill('8.5')
+        page.fill('#fqNote', 'Töö teostatakse 2 päeva jooksul.')
+        page.get_by_role('button', name='Salvesta pakkumine').click()
+        toast(page, 'Pakkumine salvestatud')
+        doc = page.frame_locator('.docframe').locator('body')
+        expect(doc).to_contain_text('HINNAPAKKUMINE'); expect(doc).to_contain_text('Pakkumine kehtib kuni'); expect(doc).to_contain_text('421,60')
+        shot(page, '11-quote')
+        page.get_by_role('button', name='Märgi saadetuks').click(); toast(page, 'saadetuks')
+        page.get_by_role('button', name='Klient kinnitas').click(); toast(page, 'kinnitatud')
+        page.get_by_role('button', name='Koosta arve').click()
+        page.locator('#qiZone').get_by_role('button', name='Koosta arve').click()
+        toast(page, 'Arve mustand koostatud')
+        expect(page.locator('#sheet')).to_contain_text('Mustand')
+        expect(page.frame_locator('.docframe').locator('body')).to_contain_text('Hinnapakkumise nr')
+        page.get_by_role('button', name='Kinnita arve').click(); toast(page, 'Arve kinnitatud')
+        expect(page.locator('#sheet')).to_contain_text('eraisik')
+        page.get_by_role('button', name='Sulge').click()
+        page.get_by_role('button', name='Hinnapakkumised').click()
+        expect(page.locator('main')).to_contain_text('Arve tehtud')
+
         step('Import prototüübist')
         proto = {'format': 'saldo-prototype', 'contacts': [{'id': 'c9', 'name': 'Kohvik Karamell OÜ', 'type': 'client', 'regcode': '14781230'}],
                  'invoices': [{'id': 'i9', 'no': 'P-002', 'date': '2026-09-03', 'due': '2026-09-17', 'contactId': 'c9', 'contactName': 'Kohvik Karamell OÜ',

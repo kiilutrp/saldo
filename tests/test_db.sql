@@ -114,9 +114,28 @@ select t.eq(((select count(*) from public.audit_log where company_id = :'cid') >
 insert into storage.objects (bucket_id, name) values ('documents', :'cid' || '/abc-arve.pdf');
 select t.expect_fail($$insert into storage.objects (bucket_id, name) values ('documents', 'muu/abc.pdf')$$, 'row-level security');
 
+-- Hinnapakkumine eraisikule → arve
+insert into public.contacts (company_id, name, kind, person) values (:'cid', 'Mari Maasikas', 'client', true) returning id as pid \gset
+select public.save_quote(jsonb_build_object('company_id', :'cid', 'no', 'HP-2026-001', 'contact_id', :'pid', 'contact_name', 'Mari Maasikas',
+  'date', '2026-10-05', 'valid_until', '2026-11-04', 'lines', '[{"description":"Kraavi kaevamine","qty":40,"unit":"m","price":8.5,"vat_rate":24},{"description":"Transport","qty":1,"unit":"tk","price":120,"vat_rate":24}]'::jsonb)) as qid \gset
+select t.eq((select gross from public.quotes where id = :'qid'), 570.40, 'pakkumise summa');
+select t.eq((select count(*) from public.journal_entries where source_id = :'qid'), 0, 'pakkumine ei tee kannet');
+select public.save_quote(jsonb_build_object('id', :'qid', 'company_id', :'cid', 'no', 'HP-2026-001', 'contact_id', :'pid', 'contact_name', 'Mari Maasikas',
+  'date', '2026-10-05', 'valid_until', '2026-11-04', 'lines', '[{"description":"Kraavi kaevamine","qty":50,"unit":"m","price":8.5,"vat_rate":24}]'::jsonb));
+select t.eq((select net from public.quotes where id = :'qid'), 425.00, 'pakkumine muudetud');
+select public.set_quote_status(:'qid', 'accepted');
+select public.quote_to_invoice(:'qid', 'Q-001', '2026-10-10') as qinv \gset
+select t.eq((select gross from public.invoices where id = :'qinv'), 527.00, 'pakkumisest arve');
+select t.eq((select count(*) from public.invoices where id = :'qinv' and status = 'draft'), 1, 'arve on mustand');
+select t.eq((select count(*) from public.quotes where id = :'qid' and status = 'invoiced' and invoice_id = :'qinv'), 1, 'pakkumine seotud arvega');
+select t.expect_fail(format($$select public.quote_to_invoice(%L, 'Q-002')$$, :'qid'), 'arve juba tehtud');
+select t.expect_fail(format($$select public.delete_quote(%L)$$, :'qid'), 'ei saa kustutada');
+select t.expect_fail($$update public.quotes set gross = 1$$, 'permission denied');
+
 -- ===== Kasutaja B ei näe A andmeid =====
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000b","aal":"aal1"}', false);
 select t.eq((select count(*) from public.invoices), 0, 'B ei näe arveid');
+select t.eq((select count(*) from public.quotes), 0, 'B ei näe pakkumisi');
 select t.eq((select count(*) from public.ledger), 0, 'B ei näe pearaamatut');
 select t.eq((select count(*) from storage.objects), 0, 'B ei näe faile');
 select t.expect_fail(format($$select public.issue_invoice(%L)$$, (select current_setting('t.cid'))::uuid), 'Arvet ei leitud');

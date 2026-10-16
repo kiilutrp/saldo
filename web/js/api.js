@@ -70,7 +70,7 @@ export const updateCompany = (id, patch) => must(sb.from('companies').update(pat
 
 export async function loadAll(cid) {
   const q = (t, order, opts) => () => sb.from(t).select('*').eq('company_id', cid).order(order, opts || { ascending: true });
-  const [company, accounts, contacts, invoices, lines, expenses, payments, ledger] = await Promise.all([
+  const [company, accounts, contacts, invoices, lines, expenses, payments, ledger, quotes, quoteLines] = await Promise.all([
     must(sb.from('companies').select('*').eq('id', cid).single()),
     fetchAll(q('accounts', 'code')),
     fetchAll(q('contacts', 'name')),
@@ -79,8 +79,10 @@ export async function loadAll(cid) {
     fetchAll(q('expenses', 'date', { ascending: false })),
     fetchAll(q('payments', 'date')),
     fetchAll(() => sb.from('ledger').select('*').eq('company_id', cid).order('date').order('no').order('line_id')),
+    fetchAll(q('quotes', 'date', { ascending: false })).catch(() => null),
+    fetchAll(() => sb.from('quote_lines').select('*').eq('company_id', cid).order('quote_id').order('position')).catch(() => []),
   ]);
-  return { company, accounts, contacts, invoices, lines, expenses, payments, ledger };
+  return { company, accounts, contacts, invoices, lines, expenses, payments, ledger, quotes, quoteLines };
 }
 
 export const auditLog = (cid) => must(sb.from('audit_log').select('*').eq('company_id', cid).order('at', { ascending: false }).limit(100));
@@ -108,6 +110,10 @@ export const cancelPayment = (id, date) => rpc('cancel_payment', { p_id: id, p_d
 export const createManualEntry = (p) => rpc('create_manual_entry', { p });
 export const reverseEntry = (id, date) => rpc('reverse_entry', { p_id: id, p_date: date });
 export const postVat = (cid, month, kind, amount, date) => rpc('post_vat', { p_company: cid, p_month: month, p_kind: kind, p_amount: amount, p_date: date });
+export const saveQuote = (p) => rpc('save_quote', { p });
+export const setQuoteStatus = (id, status) => rpc('set_quote_status', { p_id: id, p_status: status });
+export const deleteQuote = (id) => rpc('delete_quote', { p_id: id });
+export const quoteToInvoice = (id, no, date) => rpc('quote_to_invoice', { p_id: id, p_no: no, p_date: date });
 export const importPrototype = (cid, data) => rpc('import_prototype', { p_company: cid, p: data });
 
 // ---------- algdokumendid ----------

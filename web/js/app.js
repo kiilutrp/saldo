@@ -25,6 +25,10 @@ try { S.view = localStorage.getItem('saldo.view') || S.view; } catch { /* ignore
 // ====================================================================
 function derive(D) {
   D.acc = Object.fromEntries(D.accounts.map((a) => [a.code, a]));
+  D.quotesMissing = D.quotes === null;
+  D.quotes = D.quotes || []; D.quoteLines = D.quoteLines || [];
+  D.quoteLinesBy = {};
+  for (const l of D.quoteLines) (D.quoteLinesBy[l.quote_id] = D.quoteLinesBy[l.quote_id] || []).push(l);
   D.linesBy = {};
   for (const l of D.lines) (D.linesBy[l.invoice_id] = D.linesBy[l.invoice_id] || []).push(l);
   D.paidInv = {}; D.paidExp = {};
@@ -189,14 +193,14 @@ function vOnboard() {
 // ====================================================================
 // Rakenduse vaated
 // ====================================================================
-const VIEWS = [['overview', 'Ülevaade'], ['invoices', 'Müügiarved'], ['expenses', 'Ostuarved'], ['contacts', 'Kliendid ja tarnijad'],
+const VIEWS = [['overview', 'Ülevaade'], ['quotes', 'Hinnapakkumised'], ['invoices', 'Müügiarved'], ['expenses', 'Ostuarved'], ['contacts', 'Kliendid ja tarnijad'],
   ['bank', 'Pank'], ['ledger', 'Pearaamat'], ['reports', 'Aruanded'], ['settings', 'Seaded']];
 
 function render() {
   const screens = { loading: () => authShell('<p class="muted">Laadin…</p>'), setup: vSetup, auth: vAuth, mfa: vMfa, recovery: vRecovery, onboard: vOnboard };
   if (S.screen !== 'app') { root.innerHTML = screens[S.screen](); return; }
   const late = D().invoices.filter((i) => invInfo(i).st === 'late').length;
-  const views = { overview: vOverview, invoices: vInvoices, expenses: vExpenses, contacts: vContacts, bank: vBank, ledger: vLedger, reports: vReports, settings: vSettings };
+  const views = { overview: vOverview, quotes: vQuotes, invoices: vInvoices, expenses: vExpenses, contacts: vContacts, bank: vBank, ledger: vLedger, reports: vReports, settings: vSettings };
   const fn = views[S.view] || vOverview;
   root.innerHTML = `<div class="app">
     <aside class="rail">
@@ -222,6 +226,7 @@ function vOverview() {
   const attn = [];
   for (const i of lateInv.sort((a, b) => (a.due < b.due ? -1 : 1))) attn.push(`<li><div class="t"><div><b>${esc(i.contact_name)}</b> · arve ${esc(i.no)}</div><div class="muted small">Tähtaeg oli ${fd(i.due)}</div></div><div class="row"><span class="num mono">${eur(invInfo(i).open)}</span>${pill('late', i.due)}</div></li>`);
   for (const x of openExp.filter((x) => ['late', 'soon'].includes(expInfo(x).st)).sort((a, b) => (a.due < b.due ? -1 : 1))) attn.push(`<li><div class="t"><div><b>${esc(x.supplier)}</b> · tasuda</div><div class="muted small">Tähtaeg ${fd(x.due)}</div></div><div class="row"><span class="num mono">${eur(expInfo(x).open)}</span>${pill(expInfo(x).st, x.due)}</div></li>`);
+  for (const q of d.quotes.filter((q) => q.status === 'accepted')) attn.push(`<li><div class="t"><div><b>${esc(q.contact_name)}</b> · pakkumine ${esc(q.no)}</div><div class="muted small">Klient kinnitas, koosta arve</div></div><button class="btn sm" data-act="open-quote" data-id="${q.id}">Ava</button></li>`);
   const drafts = d.invoices.filter((i) => i.status === 'draft').length;
   if (drafts) attn.push(`<li><div class="t"><div><b>${drafts} arve mustandit</b></div><div class="muted small">Kinnita, et need kirjendataks</div></div><button class="btn sm" data-act="go" data-v="invoices">Vaata</button></li>`);
   const kmdDueD = new Date(+mk.slice(0, 4), +mk.slice(5, 7), 20);
@@ -264,6 +269,83 @@ function barChart(series) {
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tulud ja kulud kuude kaupa">${g}</svg>`;
 }
 
+const QPILL = { draft: ['draft', 'Mustand'], sent: ['open', 'Saadetud'], accepted: ['paid', 'Kinnitatud'], declined: ['cancelled', 'Tagasi lükatud'],
+  invoiced: ['credited', 'Arve tehtud'], expired: ['late', 'Aegunud'] };
+const quoteSt = (q) => (q.status === 'sent' && q.valid_until < today() ? 'expired' : q.status);
+const qpill = (st) => `<span class="pill ${QPILL[st][0]}">${QPILL[st][1]}</span>`;
+const nextQuoteNo = () => nextInvoiceNo(D().quotes, `HP-${new Date().getFullYear()}-`);
+
+function vQuotes() {
+  const f = S.quoteFilter || 'all';
+  const list = D().quotes.filter((q) => { const st = quoteSt(q); return f === 'all' || st === f || (f === 'sent' && st === 'expired'); })
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.no < b.no ? 1 : -1));
+  const chip = (k, t) => `<button class="chip" data-act="quotef" data-f="${k}" aria-pressed="${f === k}">${t}</button>`;
+  return `${head('Hinnapakkumised', 'Pakkumine ei lähe raamatupidamisse. Kui klient on nõus, tee pakkumisest ühe nupuga arve.', canWrite() && !D().quotesMissing ? '<button class="btn primary" data-act="new-quote">Uus pakkumine</button>' : '')}
+  ${D().quotesMissing ? '<div class="banner"><span>Pakkumiste kasutamiseks käivita Supabase\'i SQL Editoris fail <b>0004_quotes.sql</b> ja värskenda lehte.</span></div>' : ''}
+  <section class="panel"><header><div class="chips">${chip('all', 'Kõik')}${chip('draft', 'Mustandid')}${chip('sent', 'Saadetud')}${chip('accepted', 'Kinnitatud')}${chip('invoiced', 'Arve tehtud')}</div><span class="muted mono small">${list.length} pakkumist</span></header>
+  ${list.length ? `<div class="tbl"><table><thead><tr><th>Nr</th><th>Kuupäev</th><th>Klient</th><th>Kehtib kuni</th><th class="num">Km-ta</th><th class="num">Kokku</th><th>Olek</th></tr></thead><tbody>
+  ${list.map((q) => `<tr class="click" data-act="open-quote" data-id="${q.id}"><td class="mono">${esc(q.no)}</td><td class="mono">${fd(q.date)}</td><td>${esc(q.contact_name)}${contactOf(q)?.person ? ' <span class="muted small">eraisik</span>' : ''}</td><td class="mono">${fd(q.valid_until)}</td><td class="num">${n2(q.net)}</td><td class="num"><b>${n2(q.gross)}</b></td><td>${qpill(quoteSt(q))}</td></tr>`).join('')}
+  </tbody></table></div>` : `<div class="empty"><b>${D().quotes.length ? 'Selle filtriga pakkumisi pole' : 'Pakkumisi pole veel'}</b><span>Koosta pakkumine ettevõttele või eraisikule. Kinnitatud pakkumisest saab kohe arve.</span>${canWrite() && !D().quotes.length && !D().quotesMissing ? '<button class="btn primary" data-act="new-quote">Koosta esimene pakkumine</button>' : ''}</div>`}</section>`;
+}
+
+function quoteForm(q, copyFrom) {
+  const c = D().company, t = today(), revAccs = accountsOfType('R');
+  const src = q || copyFrom;
+  const d = src ? { ...src, lines: D().quoteLinesBy[src.id] || [] } : { contact_name: '', notes: '', lines: [{ description: '', qty: 1, unit: 'tk', price: '', vat_rate: c.vat_payer ? 24 : 0, account: '4000' }] };
+  if (!q) { d.no = nextQuoteNo(); d.date = t; d.valid_until = addDays(t, 30); }
+  openModal(`${mHead(q ? `Muuda pakkumist ${esc(q.no)}` : 'Uus hinnapakkumine')}
+  <form data-form="quote" data-id="${q ? q.id : ''}"><div class="body form">
+    <div class="fgrid">
+      <label class="field"><span>Klient (ettevõte või eraisik)</span><input id="fqC" name="client" list="contactsDL" value="${esc(d.contact_name)}" required autocomplete="off"></label>
+      <label class="field"><span>Pakkumise number</span><input id="fqN" name="no" value="${esc(d.no)}" required class="mono"></label>
+      <label class="field"><span>Kuupäev</span><input id="fqD" name="date" type="date" value="${d.date}" required></label>
+      <label class="field"><span>Kehtib kuni</span><input id="fqV" name="valid_until" type="date" value="${d.valid_until}" required></label>
+    </div>${contactList()}
+    ${!q ? '<label class="check small"><input type="checkbox" id="fqP" name="person"> Uus klient on eraisik</label>' : ''}
+    <div class="tbl"><table class="lines"><thead><tr><th>Kirjeldus</th><th>Kogus</th><th>Ühik</th><th>Hind</th><th>KM</th>${revAccs.length > 1 ? '<th>Tulukonto</th>' : ''}<th class="num">Summa</th><th></th></tr></thead><tbody id="lnBody">${d.lines.map((l) => lineRow(l, revAccs)).join('')}</tbody></table></div>
+    <div><button type="button" class="btn sm" data-act="addline">Lisa rida</button></div>
+    <div class="totals" id="invTot"></div>
+    <label class="field"><span>Märkus pakkumisel</span><textarea id="fqNote" name="notes" rows="2" placeholder="Nt tööde kirjeldus, tähtajad, tingimused">${esc(d.notes || '')}</textarea></label>
+    <div class="err" id="fErr"></div>
+  </div><footer><span></span><div class="row"><button type="button" class="btn" data-act="close">Loobu</button><button class="btn primary" type="submit">Salvesta pakkumine</button></div></footer></form>`);
+  recalcInvoice(sheet.querySelector('form'));
+}
+async function saveQuoteForm(f) {
+  const err = f.querySelector('#fErr');
+  const L = readLines(f).filter((l) => l.description || l.price);
+  const name = f.client.value.trim();
+  if (!name) { err.textContent = 'Lisa kliendi nimi.'; return; }
+  if (!L.length || L.some((l) => !l.description)) { err.textContent = 'Igal real peab olema kirjeldus.'; return; }
+  if (f.valid_until.value < f.date.value) { err.textContent = 'Kehtivus ei saa lõppeda enne pakkumise kuupäeva.'; return; }
+  const person = !!f.person?.checked;
+  await act(async () => {
+    let contactId;
+    const ex = D().contacts.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
+    if (ex) contactId = await findOrCreateContact(name, 'client');
+    else contactId = (await api.saveContact({ company_id: S.cid, name, kind: 'client', person })).id;
+    return api.saveQuote({ id: f.dataset.id || null, company_id: S.cid, no: f.no.value.trim(), contact_id: contactId, contact_name: name,
+      date: f.date.value, valid_until: f.valid_until.value, notes: f.notes.value.trim(), lines: L });
+  }, 'Pakkumine salvestatud', (id) => { closeModal(); openQuote(id); });
+}
+function openQuote(id) {
+  const q = D().quotes.find((x) => x.id === id);
+  if (!q) return;
+  const st = quoteSt(q), w = canWrite();
+  let left = '', actions = `<button class="btn" data-act="print-quote" data-id="${id}">Prindi / PDF</button><button class="btn" data-act="copy-quote" data-id="${id}">Tee koopia</button>`;
+  if (q.status === 'invoiced') {
+    actions += q.invoice_id && D().invById[q.invoice_id] ? `<button class="btn primary" data-act="open-inv" data-id="${q.invoice_id}">Ava arve ${esc(D().invById[q.invoice_id].no)}</button>` : '';
+  } else if (w) {
+    left = `<span class="row" id="delZone"><button class="btn danger" data-act="quote-del-ask" data-id="${id}">Kustuta</button></span>`;
+    actions += `<button class="btn" data-act="edit-quote" data-id="${id}">Muuda</button>`;
+    if (q.status === 'draft') actions += `<button class="btn" data-act="quote-status" data-s="sent" data-id="${id}">Märgi saadetuks</button>`;
+    if (q.status === 'sent') actions += `<button class="btn" data-act="quote-status" data-s="declined" data-id="${id}">Tagasi lükatud</button><button class="btn" data-act="quote-status" data-s="accepted" data-id="${id}">Klient kinnitas</button>`;
+    if (q.status === 'declined') actions += `<button class="btn" data-act="quote-status" data-s="sent" data-id="${id}">Taasta</button>`;
+    if (q.status !== 'declined') actions += `<span class="row" id="qiZone"><button class="btn primary" data-act="quote-inv-ask" data-id="${id}">Koosta arve</button></span>`;
+  }
+  openModal(`${mHead(`Hinnapakkumine ${esc(q.no)} ${qpill(st)}`)}<div class="body"><iframe class="docframe" title="Pakkumise eelvaade" srcdoc="${esc(quoteDocFor(q))}"></iframe><div class="err" id="fErr"></div></div>
+    <footer>${left || '<span></span>'}<div class="row">${actions}</div></footer>`);
+}
+
 function vInvoices() {
   const f = S.invFilter;
   const match = (i) => { const st = invInfo(i).st; return f === 'all' || (f === 'open' ? ['open', 'partial', 'late'].includes(st) : st === f); };
@@ -297,7 +379,7 @@ function vContacts() {
   const buys = (c) => r2(d.expenses.filter((x) => x.status === 'active' && x.contact_id === c.id).reduce((s, x) => s + num(x.net), 0));
   return `${head('Kliendid ja tarnijad', 'Uued partnerid lisanduvad ka arve või kulu sisestamisel automaatselt.', canWrite() ? '<button class="btn primary" data-act="new-contact">Lisa partner</button>' : '')}
   <section class="panel">${list.length ? `<div class="tbl"><table><thead><tr><th>Nimi</th><th>Liik</th><th>Registrikood</th><th>KMKR</th><th>E-post</th><th class="num">Müük km-ta</th><th class="num">Ost km-ta</th></tr></thead><tbody>
-  ${list.map((c) => `<tr class="click" data-act="edit-contact" data-id="${c.id}"><td><b>${esc(c.name)}</b>${c.einvoice ? ' <span class="pill open">e-arve</span>' : ''}</td><td>${typ[c.kind] || '—'}</td><td class="mono">${esc(c.regcode || '—')}</td><td class="mono">${esc(c.vatno || '—')}</td><td>${esc(c.email || '—')}</td><td class="num">${n2(sales(c))}</td><td class="num">${n2(buys(c))}</td></tr>`).join('')}
+  ${list.map((c) => `<tr class="click" data-act="edit-contact" data-id="${c.id}"><td><b>${esc(c.name)}</b>${c.einvoice ? ' <span class="pill open">e-arve</span>' : ''}</td><td>${typ[c.kind] || '—'}${c.person ? ' · eraisik' : ''}</td><td class="mono">${esc(c.regcode || '—')}</td><td class="mono">${esc(c.vatno || '—')}</td><td>${esc(c.email || '—')}</td><td class="num">${n2(sales(c))}</td><td class="num">${n2(buys(c))}</td></tr>`).join('')}
   </tbody></table></div>` : '<div class="empty"><b>Partnereid pole veel</b><span>Lisa kliente ja tarnijaid koos registrikoodi ja KMKR numbriga.</span></div>'}</section>`;
 }
 
@@ -554,7 +636,7 @@ function recalcInvoice(f) {
   f.querySelectorAll('tr.ln').forEach((tr, i) => { tr.querySelector('.lsum').textContent = n2(L[i].qty * L[i].price); });
   const c = calcLines(L);
   f.querySelector('#invTot').innerHTML = `<span class="muted">Summa km-ta</span><span class="num">${eur(c.net)}</span>${Object.keys(c.by).filter((r) => +r > 0).map((r) => `<span class="muted">Käibemaks ${r}%</span><span class="num">${eur(c.by[r].vat)}</span>`).join('')}<span class="g">Kokku tasuda</span><span class="num g">${eur(c.gross)}</span>`;
-  f.querySelector('#fiRef').textContent = refNo(f.no.value);
+  const rf = f.querySelector('#fiRef'); if (rf) rf.textContent = refNo(f.no.value);
 }
 async function saveInvoice(f, mode) {
   const err = f.querySelector('#fErr');
@@ -588,7 +670,7 @@ function openInvoice(id) {
     if (!x.paid) left = `<span class="row" id="delZone"><button class="btn danger" data-act="credit-ask" data-id="${id}">Koosta kreeditarve</button></span>`;
   }
   openModal(`${mHead(`${i.kind === 'credit' ? 'Kreeditarve' : 'Arve'} ${esc(i.no)} ${pill(x.st, i.due)}`)}<div class="body"><iframe class="docframe" title="Arve eelvaade" srcdoc="${esc(invoiceDocFor(i))}"></iframe>
-    ${i.status === 'issued' && i.kind === 'invoice' ? `<p class="muted small" style="margin:10px 0 0">Laekunud ${eur(x.paid)} · tasumata ${eur(Math.max(0, x.open))}</p>` : ''}${paysHtml}${i.status === 'issued' ? einvPanel(i) : ''}
+    ${i.status === 'issued' && i.kind === 'invoice' ? `<p class="muted small" style="margin:10px 0 0">Laekunud ${eur(x.paid)} · tasumata ${eur(Math.max(0, x.open))}</p>` : ''}${paysHtml}${i.status === 'issued' ? (contactOf(i)?.person ? '<p class="note" style="margin-top:12px">Klient on eraisik. Eraisikule saadetakse arve PDF-ina, e-arvet ei koostata.</p>' : einvPanel(i)) : ''}
     <div class="err" id="fErr"></div></div><footer>${left || '<span></span>'}<div class="row">${actions}</div></footer>`);
 }
 function einvPanel(i) {
@@ -684,7 +766,8 @@ function contactForm(c) {
   openModal(`${mHead(c ? 'Muuda partnerit' : 'Lisa partner')}<form data-form="contact" data-id="${c ? c.id : ''}"><div class="body form"><div class="fgrid">
     <label class="field"><span>Nimi</span><input id="fcN" name="cname" value="${esc(d.name)}" required></label>
     <label class="field"><span>Liik</span><select id="fcT" name="kind"><option value="client" ${d.kind === 'client' ? 'selected' : ''}>Klient</option><option value="supplier" ${d.kind === 'supplier' ? 'selected' : ''}>Tarnija</option><option value="both" ${d.kind === 'both' ? 'selected' : ''}>Klient ja tarnija</option></select></label>
-    <label class="field"><span>Registrikood</span><input id="fcR" name="regcode" value="${esc(d.regcode)}" inputmode="numeric"></label>
+    <label class="check" style="grid-column:1/-1"><input type="checkbox" id="fcP" name="person" ${d.person ? 'checked' : ''}> Eraisik (mitte ettevõte)</label>
+    <label class="field"><span>Registrikood või isikukood</span><input id="fcR" name="regcode" value="${esc(d.regcode)}" inputmode="numeric"></label>
     <label class="field"><span>KMKR number</span><input id="fcV" name="vatno" value="${esc(d.vatno)}"></label>
     <label class="field"><span>E-post</span><input id="fcE" name="email" type="email" value="${esc(d.email)}"></label>
     <label class="field"><span>Aadress</span><input id="fcA" name="address" value="${esc(d.address)}" placeholder="Tänav 1, 10111 Tallinn"></label>
@@ -728,11 +811,15 @@ function invoiceDocFor(i) {
   return invoiceDoc(i, D().linesBy[i.id] || [], D().company, contactOf(i) || {},
     { origNo: i.credit_of ? D().invById[i.credit_of]?.no : '', paidDate: x.st === 'paid' ? pays[pays.length - 1] : null, accent: D().company.invoice_color });
 }
-function printInvoice(i) {
+function printHtml(html) {
   const w = window.open('', '_blank');
   if (!w) { toast('Brauser blokeeris uue akna. Luba hüpikaknad selle lehe jaoks.'); return; }
-  w.document.write(invoiceDocFor(i).replace('</body>', '<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body>'));
+  w.document.write(html.replace('</body>', '<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body>'));
   w.document.close();
+}
+function printInvoice(i) { printHtml(invoiceDocFor(i)); }
+function quoteDocFor(q) {
+  return invoiceDoc({ ...q, kind: 'quote' }, D().quoteLinesBy[q.id] || [], D().company, contactOf(q) || {}, { accent: D().company.invoice_color });
 }
 function ledgerCSV() {
   const q = (s) => { let v = String(s); if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`; return `"${v.replace(/"/g, '""')}"`; };
@@ -809,6 +896,20 @@ const ACTS = {
   'auth-mode': (b) => { S.authMode = b.dataset.m; S.authErr = ''; S.authMsg = ''; render(); },
   signout: async () => { await api.signOut(); location.reload(); },
   'new-inv': () => invoiceForm(null),
+  'new-quote': () => quoteForm(null),
+  'open-quote': (b) => openQuote(b.dataset.id),
+  'edit-quote': (b) => quoteForm(D().quotes.find((q) => q.id === b.dataset.id)),
+  'copy-quote': (b) => { const q = D().quotes.find((x) => x.id === b.dataset.id); quoteForm(null, q); },
+  'quote-status': (b) => act(() => api.setQuoteStatus(b.dataset.id, b.dataset.s), { sent: 'Märgitud saadetuks', accepted: 'Pakkumine kinnitatud', declined: 'Märgitud tagasi lükatuks', draft: 'Muudetud mustandiks' }[b.dataset.s], () => openQuote(b.dataset.id)),
+  'quote-del-ask': (b) => confirmZone(b, 'Kustutada pakkumine?', 'quote-del'),
+  'quote-del': (b) => act(() => api.deleteQuote(b.dataset.id), 'Pakkumine kustutatud', () => closeModal()),
+  'quote-inv-ask': (b) => {
+    const z = b.closest('[id]');
+    z.innerHTML = `<span class="muted small">Arve nr</span><input id="qiNo" value="${esc(nextInvoiceNo(D().invoices, D().company.invoice_prefix))}" class="mono" style="width:120px" aria-label="Arve number"><input id="qiDate" type="date" value="${today()}" style="width:auto" aria-label="Arve kuupäev"><button type="button" class="btn primary" data-act="quote-inv" data-id="${b.dataset.id}">Koosta arve</button><button type="button" class="btn ghost" data-act="close">Loobu</button>`;
+  },
+  'quote-inv': (b) => act(() => api.quoteToInvoice(b.dataset.id, sheet.querySelector('#qiNo').value.trim(), sheet.querySelector('#qiDate').value),
+    'Arve mustand koostatud. Kontrolli ja kinnita.', (id) => { S.view = 'invoices'; render(); openInvoice(id); }),
+  'print-quote': (b) => printHtml(quoteDocFor(D().quotes.find((q) => q.id === b.dataset.id))),
   'open-inv': (b) => openInvoice(b.dataset.id),
   'edit-inv': (b) => invoiceForm(D().invById[b.dataset.id]),
   'issue-inv': (b) => act(() => api.issueInvoice(b.dataset.id), 'Arve kinnitatud ja kirjendatud', () => openInvoice(b.dataset.id)),
@@ -855,6 +956,7 @@ const ACTS = {
       <footer><span></span><div class="row"><button type="button" class="btn" data-act="close">Loobu</button><button class="btn danger solid" type="submit">Tee storno</button></div></footer></form>`);
   },
   invf: (b) => { S.invFilter = b.dataset.f; render(); },
+  quotef: (b) => { S.quoteFilter = b.dataset.f; render(); },
   expf: (b) => { S.expFilter = b.dataset.f; render(); },
   ltab: (b) => { S.ledgerTab = b.dataset.t; render(); },
   rtab: (b) => { S.repTab = b.dataset.t; render(); },
@@ -948,6 +1050,7 @@ document.addEventListener('submit', async (e) => {
       return;
     }
     if (t === 'invoice') return await saveInvoice(f, btn?.value || 'draft');
+    if (t === 'quote') return await saveQuoteForm(f);
     if (t === 'expense') return await saveExpense(f);
     if (t === 'payment') {
       const kind = f.dataset.kind, id = f.dataset.id;
@@ -956,7 +1059,7 @@ document.addEventListener('submit', async (e) => {
     }
     if (t === 'contact') {
       const row = { company_id: S.cid, name: f.cname.value.trim(), kind: f.kind.value, regcode: f.regcode.value.trim(), vatno: f.vatno.value.trim(), email: f.email.value.trim(),
-        address: f.address.value.trim(), peppol_id: f.peppol_id.value.trim(), einvoice: f.einvoice.checked };
+        address: f.address.value.trim(), peppol_id: f.peppol_id.value.trim(), einvoice: f.einvoice.checked, person: f.person.checked };
       if (f.dataset.id) { row.id = f.dataset.id; delete row.company_id; }
       return await act(() => api.saveContact(row), 'Partner salvestatud', () => closeModal());
     }
@@ -988,6 +1091,7 @@ document.addEventListener('submit', async (e) => {
 document.addEventListener('input', (e) => {
   const f = e.target.closest('form[data-form]');
   if (!f) return;
+  if (f.dataset.form === 'quote') { recalcInvoice(f); return; }
   if (f.dataset.form === 'invoice') {
     recalcInvoice(f);
     if (e.target.name === 'date' && !f.dataset.id) f.due.value = addDays(f.date.value, D().company.payment_term_days ?? 14);

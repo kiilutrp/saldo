@@ -47,7 +47,8 @@ tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
 .thanks{margin:0;font-size:13px;font-weight:500;color:#3A4352}
 .foot{margin-top:auto;padding:7mm 16mm 9mm;border-top:1px solid #E4E8EE;color:#6B7585;font-size:10.5px;display:flex;flex-wrap:wrap;gap:4px 16px}
 .foot b{color:#3A4352;font-weight:600}
-@media screen and (max-width:820px){
+@media screen and (max-width:850px){.sheet{width:100%;margin:0;box-shadow:none;min-height:0}}
+@media screen and (max-width:600px){
   .sheet{width:auto;min-height:0;margin:0;box-shadow:none}
   .inner{padding:22px 18px 0}
   .top,.parties,.bottom{display:flex;flex-direction:column;gap:18px}
@@ -66,6 +67,8 @@ tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
  */
 export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
   const credit = i.kind === 'credit';
+  const quote = i.kind === 'quote';
+  const title = quote ? 'Hinnapakkumine' : credit ? 'Kreeditarve' : 'Arve';
   const cc = calcLines(lines);
   const ref = i.ref_no || refNo(i.no);
   const accent = /^#[0-9a-f]{6}$/i.test(opt.accent || '') ? opt.accent : '#1C5DC2';
@@ -77,7 +80,7 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
     c.address && esc(c.address), c.email && esc(c.email), c.phone && esc(c.phone),
   ].filter(Boolean);
   return `<!doctype html><html lang="et"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${credit ? 'Kreeditarve' : 'Arve'} ${esc(i.no)} · ${esc(c.name || '')}</title>
+<title>${title} ${esc(i.no)} · ${esc(c.name || '')}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>:root{--accent:${accent};--soft:${accent}12}${CSS}</style></head><body>
 <div class="sheet">
@@ -85,15 +88,15 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
   <div class="inner">
     <div class="top">
       <div class="brand">${c.logo && /^data:image\//.test(c.logo) ? `<img class="logo" src="${esc(c.logo)}" alt="">` : ''}<div><div class="co">${esc(c.name || 'Ettevõtte nimi')}</div><div class="co-sub">${esc(c.address || '')}</div></div></div>
-      <div class="title"><div class="kind">${credit ? 'KREEDITARVE' : 'ARVE'}</div><div class="no">Nr <span class="mono">${esc(i.no)}</span></div>
-        ${!credit && opt.paidDate ? `<div class="stamp">Tasutud ${fd(opt.paidDate)}</div>` : ''}</div>
+      <div class="title"><div class="kind">${title.toUpperCase()}</div><div class="no">Nr <span class="mono">${esc(i.no)}</span></div>
+        ${!credit && !quote && opt.paidDate ? `<div class="stamp">Tasutud ${fd(opt.paidDate)}</div>` : ''}</div>
     </div>
     <div class="parties">
-      <div class="to"><div class="lbl">Arve saaja</div><b>${esc(i.contact_name)}</b>
-        ${cl.address ? `<div>${esc(cl.address)}</div>` : ''}${cl.regcode ? `<div>Reg. kood ${esc(cl.regcode)}</div>` : ''}${cl.vatno ? `<div>KMKR ${esc(cl.vatno)}</div>` : ''}</div>
+      <div class="to"><div class="lbl">${quote ? 'Pakkumise saaja' : 'Arve saaja'}</div><b>${esc(i.contact_name)}</b>
+        ${cl.address ? `<div>${esc(cl.address)}</div>` : ''}${cl.regcode ? `<div>${cl.person ? 'Isikukood' : 'Reg. kood'} ${esc(cl.regcode)}</div>` : ''}${cl.vatno && !cl.person ? `<div>KMKR ${esc(cl.vatno)}</div>` : ''}</div>
       <dl class="meta">
-        <dt>Arve kuupäev</dt><dd class="mono">${fd(i.date)}</dd>
-        ${credit ? (opt.origNo ? `<dt>Algne arve</dt><dd class="mono">${esc(opt.origNo)}</dd>` : '') : `<dt>Maksetähtaeg</dt><dd class="mono">${fd(i.due)}</dd><dt>Viitenumber</dt><dd class="mono">${esc(ref)}</dd><dt>Arveldusarve</dt><dd class="mono">${esc(c.iban || '—')}</dd>${c.bank ? `<dt>Pank</dt><dd>${esc(c.bank)}</dd>` : ''}`}
+        <dt>${quote ? 'Kuupäev' : 'Arve kuupäev'}</dt><dd class="mono">${fd(i.date)}</dd>
+        ${quote ? `<dt>Kehtib kuni</dt><dd class="mono">${fd(i.valid_until)}</dd>` : credit ? (opt.origNo ? `<dt>Algne arve</dt><dd class="mono">${esc(opt.origNo)}</dd>` : '') : `<dt>Maksetähtaeg</dt><dd class="mono">${fd(i.due)}</dd><dt>Viitenumber</dt><dd class="mono">${esc(ref)}</dd><dt>Arveldusarve</dt><dd class="mono">${esc(c.iban || '—')}</dd>${c.bank ? `<dt>Pank</dt><dd>${esc(c.bank)}</dd>` : ''}`}
         ${i.buyer_ref ? `<dt>Teie viide</dt><dd>${esc(i.buyer_ref)}</dd>` : ''}
       </dl>
     </div>
@@ -105,10 +108,10 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
       <div></div>
       <div class="totals">
         <span>Summa käibemaksuta</span><span class="mono">${n2(cc.net)}</span>${vatRows}
-        <div class="grand"><b>${credit ? 'Kokku' : 'Tasuda'}</b><span class="mono">${n2(cc.gross)} €</span></div>
+        <div class="grand"><b>${credit || quote ? 'Kokku' : 'Tasuda'}</b><span class="mono">${n2(cc.gross)} €</span></div>
       </div>
     </div>
-    <div class="after">${credit ? '' : '<p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>'}${i.notes ? `<div class="notes">${esc(i.notes)}</div>` : ''}</div>
+    <div class="after">${quote ? `<p class="thanks">Pakkumine kehtib kuni ${fd(i.valid_until)}.</p>` : credit ? '' : '<p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>'}${i.notes ? `<div class="notes">${esc(i.notes)}</div>` : ''}</div>
   </div>
   <div class="foot"><b>${esc(c.name || '')}</b>${sellerBits.map((b) => `<span>${b}</span>`).join('')}</div>
 </div></body></html>`;

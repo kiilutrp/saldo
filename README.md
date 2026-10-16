@@ -78,6 +78,8 @@ Andmed asuvad sinu enda Supabase'i andmebaasis (PostgreSQL, Frankfurt). Veebileh
 
 **0003_invoice_design.sql** (16.10.2026): arve logo ja värv. Käivita see SQL Editoris, et saaksid seadetes logo lisada.
 
+**0004_quotes.sql** (16.10.2026): hinnapakkumised ja eraisikust kliendid.
+
 
 Kui tarkvarast tuleb uus versioon, mis muudab andmebaasi, lisandub kausta `supabase/migrations/` uus fail (nt `0003_...sql`). Käivita see Supabase'i SQL Editoris samamoodi nagu esimesed. Veebileht uueneb GitHub Pagesis automaatselt.
 
