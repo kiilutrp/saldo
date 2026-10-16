@@ -43,6 +43,7 @@ tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
 .pay{border-top:1px solid #E4E8EE;padding-top:10px;display:grid;grid-template-columns:repeat(4,auto);gap:2px 18px;justify-content:space-between}
 .pay .lbl{margin:0;font-size:9.5px}
 .pay .v{font-size:13px;font-weight:500}
+.thanks{margin:-3mm 0 0;font-size:13px;font-weight:500;color:#3A4352}
 .foot{margin-top:auto;padding:7mm 16mm 9mm;border-top:1px solid #E4E8EE;color:#6B7585;font-size:10.5px;display:flex;flex-wrap:wrap;gap:4px 16px}
 .foot b{color:#3A4352;font-weight:600}
 @media screen and (max-width:820px){
@@ -112,7 +113,8 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
       <div><div class="lbl">Arveldusarve</div><div class="v mono iban">${esc(c.iban || '—')}</div></div>
       <div><div class="lbl">Viitenumber</div><div class="v mono">${esc(ref)}</div></div>
       <div><div class="lbl">Tähtaeg</div><div class="v mono">${fd(i.due)}</div></div>
-    </div>`}
+    </div>
+    <p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>`}
   </div>
   <div class="foot"><b>${esc(c.name || '')}</b>${sellerBits.map((b) => `<span>${b}</span>`).join('')}</div>
 </div></body></html>`;
