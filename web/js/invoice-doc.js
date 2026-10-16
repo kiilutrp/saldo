@@ -40,10 +40,9 @@ tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
 .grand{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:10px;border-top:1.5px solid #141A24}
 .grand b{font-size:14px;font-weight:700}
 .grand .mono{font-size:18px;font-weight:600}
-.pay{border:1.5px solid var(--accent);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:repeat(4,auto);gap:4px 18px;justify-content:space-between}
-.pay .lbl{margin:0}
-.pay .v{font-size:14px;font-weight:600}
-.pay .iban{font-size:15px;letter-spacing:.02em}
+.pay{border-top:1px solid #E4E8EE;padding-top:10px;display:grid;grid-template-columns:repeat(4,auto);gap:2px 18px;justify-content:space-between}
+.pay .lbl{margin:0;font-size:9.5px}
+.pay .v{font-size:13px;font-weight:500}
 .foot{margin-top:auto;padding:7mm 16mm 9mm;border-top:1px solid #E4E8EE;color:#6B7585;font-size:10.5px;display:flex;flex-wrap:wrap;gap:4px 16px}
 .foot b{color:#3A4352;font-weight:600}
 @media screen and (max-width:820px){
