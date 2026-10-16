@@ -19,13 +19,13 @@ body{font:13px/1.5 "Schibsted Grotesk",ui-sans-serif,system-ui,-apple-system,"Se
 .kind{font-size:30px;font-weight:800;letter-spacing:.08em;color:var(--accent);line-height:1}
 .no{font-size:14px;margin-top:6px;color:#3A4352}
 .stamp{display:inline-block;margin-top:8px;border:1.5px solid #1D7A4E;color:#1D7A4E;font-weight:700;font-size:11px;letter-spacing:.12em;padding:3px 8px;border-radius:4px;text-transform:uppercase}
-.parties{display:grid;grid-template-columns:1.2fr 1fr;gap:10mm;align-items:start}
+.parties{display:grid;grid-template-columns:1fr auto;gap:10mm;align-items:start}
 .lbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#7A8494;font-weight:700;margin-bottom:5px}
 .to b{font-size:15px;font-weight:700;display:block;margin-bottom:2px}
 .to div{color:#3A4352}
 .meta{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;background:var(--soft);border-radius:8px;padding:12px 14px}
 .meta dt{color:#5B6575}
-.meta dd{margin:0;text-align:right;font-weight:600}
+.meta dd{margin:0;text-align:right;font-weight:600;white-space:nowrap}
 table{width:100%;border-collapse:collapse}
 thead th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7A8494;font-weight:700;text-align:left;padding:0 8px 8px;border-bottom:1.5px solid #141A24}
 thead th.r,td.r{text-align:right}
@@ -43,7 +43,7 @@ tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
 .pay{border-top:1px solid #E4E8EE;padding-top:10px;display:grid;grid-template-columns:repeat(4,auto);gap:2px 18px;justify-content:space-between}
 .pay .lbl{margin:0;font-size:9.5px}
 .pay .v{font-size:13px;font-weight:500}
-.thanks{margin:-3mm 0 0;font-size:13px;font-weight:500;color:#3A4352}
+.thanks{margin:0;font-size:13px;font-weight:500;color:#3A4352}
 .foot{margin-top:auto;padding:7mm 16mm 9mm;border-top:1px solid #E4E8EE;color:#6B7585;font-size:10.5px;display:flex;flex-wrap:wrap;gap:4px 16px}
 .foot b{color:#3A4352;font-weight:600}
 @media screen and (max-width:820px){
@@ -74,7 +74,6 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
   const sellerBits = [
     c.regcode && `Reg. kood <b>${esc(c.regcode)}</b>`, c.vatno && `KMKR <b>${esc(c.vatno)}</b>`,
     c.address && esc(c.address), c.email && esc(c.email), c.phone && esc(c.phone),
-    c.iban && `${esc(c.bank || 'Pank')} <b class="mono">${esc(c.iban)}</b>`,
   ].filter(Boolean);
   return `<!doctype html><html lang="et"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${credit ? 'Kreeditarve' : 'Arve'} ${esc(i.no)} · ${esc(c.name || '')}</title>
@@ -93,7 +92,7 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
         ${cl.address ? `<div>${esc(cl.address)}</div>` : ''}${cl.regcode ? `<div>Reg. kood ${esc(cl.regcode)}</div>` : ''}${cl.vatno ? `<div>KMKR ${esc(cl.vatno)}</div>` : ''}</div>
       <dl class="meta">
         <dt>Arve kuupäev</dt><dd class="mono">${fd(i.date)}</dd>
-        ${credit ? (opt.origNo ? `<dt>Algne arve</dt><dd class="mono">${esc(opt.origNo)}</dd>` : '') : `<dt>Maksetähtaeg</dt><dd class="mono">${fd(i.due)}</dd><dt>Viitenumber</dt><dd class="mono">${esc(ref)}</dd>`}
+        ${credit ? (opt.origNo ? `<dt>Algne arve</dt><dd class="mono">${esc(opt.origNo)}</dd>` : '') : `<dt>Maksetähtaeg</dt><dd class="mono">${fd(i.due)}</dd><dt>Viitenumber</dt><dd class="mono">${esc(ref)}</dd><dt>Arveldusarve</dt><dd class="mono">${esc(c.iban || '—')}</dd>${c.bank ? `<dt>Pank</dt><dd>${esc(c.bank)}</dd>` : ''}`}
         ${i.buyer_ref ? `<dt>Teie viide</dt><dd>${esc(i.buyer_ref)}</dd>` : ''}
       </dl>
     </div>
@@ -108,13 +107,7 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
         <div class="grand"><b>${credit ? 'Kokku' : 'Tasuda'}</b><span class="mono">${n2(cc.gross)} €</span></div>
       </div>
     </div>
-    ${credit ? '' : `<div class="pay">
-      <div><div class="lbl">Saaja</div><div class="v">${esc(c.name || '')}</div></div>
-      <div><div class="lbl">Arveldusarve</div><div class="v mono iban">${esc(c.iban || '—')}</div></div>
-      <div><div class="lbl">Viitenumber</div><div class="v mono">${esc(ref)}</div></div>
-      <div><div class="lbl">Tähtaeg</div><div class="v mono">${fd(i.due)}</div></div>
-    </div>
-    <p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>`}
+    ${credit ? '' : `<p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>`}
   </div>
   <div class="foot"><b>${esc(c.name || '')}</b>${sellerBits.map((b) => `<span>${b}</span>`).join('')}</div>
 </div></body></html>`;
