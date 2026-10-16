@@ -33,7 +33,8 @@ tbody td{padding:10px 8px;border-bottom:1px solid #E4E8EE;vertical-align:top}
 tbody td.desc{font-weight:500}
 tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
 .bottom{display:grid;grid-template-columns:1fr 78mm;gap:10mm;align-items:start}
-.notes{color:#3A4352;white-space:pre-line}
+.after{display:flex;flex-direction:column;gap:3mm;margin-top:-2mm}
+.notes{color:#3A4352;white-space:pre-line;max-width:120mm}
 .totals{display:grid;grid-template-columns:1fr auto;gap:5px 14px}
 .totals span:nth-child(odd){color:#5B6575}
 .totals span:nth-child(even){text-align:right}
@@ -101,13 +102,13 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
       <tbody>${lines.map((l) => `<tr><td class="desc">${esc(l.description)}</td><td class="r mono">${qty(l.qty)}&nbsp;${esc(l.unit || '')}</td><td class="r mono">${n2(l.price)}</td><td class="r mono">${+l.vat_rate}%</td><td class="r mono">${n2(num(l.qty) * num(l.price))}</td></tr>`).join('')}</tbody>
     </table>
     <div class="bottom">
-      <div class="notes">${esc(i.notes || '')}</div>
+      <div></div>
       <div class="totals">
         <span>Summa käibemaksuta</span><span class="mono">${n2(cc.net)}</span>${vatRows}
         <div class="grand"><b>${credit ? 'Kokku' : 'Tasuda'}</b><span class="mono">${n2(cc.gross)} €</span></div>
       </div>
     </div>
-    ${credit ? '' : `<p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>`}
+    <div class="after">${credit ? '' : '<p class="thanks">Aitäh arve õigeaegse tasumise eest!</p>'}${i.notes ? `<div class="notes">${esc(i.notes)}</div>` : ''}</div>
   </div>
   <div class="foot"><b>${esc(c.name || '')}</b>${sellerBits.map((b) => `<span>${b}</span>`).join('')}</div>
 </div></body></html>`;
