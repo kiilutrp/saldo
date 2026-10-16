@@ -93,7 +93,7 @@ export function invoiceDoc(i, lines, c, cl = {}, opt = {}) {
     </div>
     <div class="parties">
       <div class="to"><div class="lbl">${quote ? 'Pakkumise saaja' : 'Arve saaja'}</div><b>${esc(i.contact_name)}</b>
-        ${cl.address ? `<div>${esc(cl.address)}</div>` : ''}${cl.regcode ? `<div>${cl.person ? 'Isikukood' : 'Reg. kood'} ${esc(cl.regcode)}</div>` : ''}${cl.vatno && !cl.person ? `<div>KMKR ${esc(cl.vatno)}</div>` : ''}</div>
+        ${cl.address ? `<div>${esc(cl.address)}</div>` : ''}${cl.regcode ? `<div>${cl.person ? 'Isikukood' : 'Reg. kood'} ${esc(cl.regcode)}</div>` : ''}${cl.vatno && !cl.person ? `<div>KMKR ${esc(cl.vatno)}</div>` : ''}${cl.email ? `<div>${esc(cl.email)}</div>` : ''}${cl.phone ? `<div>${esc(cl.phone)}</div>` : ''}</div>
       <dl class="meta">
         <dt>${quote ? 'Kuupäev' : 'Arve kuupäev'}</dt><dd class="mono">${fd(i.date)}</dd>
         ${quote ? `<dt>Kehtib kuni</dt><dd class="mono">${fd(i.valid_until)}</dd>` : credit ? (opt.origNo ? `<dt>Algne arve</dt><dd class="mono">${esc(opt.origNo)}</dd>` : '') : `<dt>Maksetähtaeg</dt><dd class="mono">${fd(i.due)}</dd><dt>Viitenumber</dt><dd class="mono">${esc(ref)}</dd><dt>Arveldusarve</dt><dd class="mono">${esc(c.iban || '—')}</dd>${c.bank ? `<dt>Pank</dt><dd>${esc(c.bank)}</dd>` : ''}`}

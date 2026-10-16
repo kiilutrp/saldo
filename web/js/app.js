@@ -130,6 +130,8 @@ const vatOpts = (sel) => VAT_RATES.map((r) => `<option value="${r}" ${Number(sel
 const accOpts = (codes, sel) => codes.map((c) => `<option value="${c}" ${c === sel ? 'selected' : ''}>${c} ${esc(accName(c))}</option>`).join('');
 const contactList = () => `<datalist id="contactsDL">${D().contacts.map((c) => `<option value="${esc(c.name)}"></option>`).join('')}</datalist>`;
 const head = (t, p, actions = '') => `<div class="head"><div><h1>${t}</h1>${p ? `<p>${p}</p>` : ''}</div><div class="row">${actions}</div></div>`;
+/** Tulukontod arve rea valikuks; ainult 4000/4900 korral valikut ei näidata. */
+const revenueChoices = () => { const r = accountsOfType('R'); return r.filter((a) => a !== '4900').length > 1 ? r : ['4000']; };
 const accountsOfType = (...types) => D().accounts.filter((a) => a.active && types.includes(a.type)).map((a) => a.code);
 async function findOrCreateContact(name, kind) {
   const ex = D().contacts.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
@@ -289,19 +291,18 @@ function vQuotes() {
 }
 
 function quoteForm(q, copyFrom) {
-  const c = D().company, t = today(), revAccs = accountsOfType('R');
+  const c = D().company, t = today(), revAccs = revenueChoices();
   const src = q || copyFrom;
   const d = src ? { ...src, lines: D().quoteLinesBy[src.id] || [] } : { contact_name: '', notes: '', lines: [{ description: '', qty: 1, unit: 'tk', price: '', vat_rate: c.vat_payer ? 24 : 0, account: '4000' }] };
   if (!q) { d.no = nextQuoteNo(); d.date = t; d.valid_until = addDays(t, 30); }
   openModal(`${mHead(q ? `Muuda pakkumist ${esc(q.no)}` : 'Uus hinnapakkumine')}
   <form data-form="quote" data-id="${q ? q.id : ''}"><div class="body form">
+    ${clientPanel(d.contact_name, 'fq')}
     <div class="fgrid">
-      <label class="field"><span>Klient (ettevõte või eraisik)</span><input id="fqC" name="client" list="contactsDL" value="${esc(d.contact_name)}" required autocomplete="off"></label>
       <label class="field"><span>Pakkumise number</span><input id="fqN" name="no" value="${esc(d.no)}" required class="mono"></label>
       <label class="field"><span>Kuupäev</span><input id="fqD" name="date" type="date" value="${d.date}" required></label>
       <label class="field"><span>Kehtib kuni</span><input id="fqV" name="valid_until" type="date" value="${d.valid_until}" required></label>
     </div>${contactList()}
-    ${!q ? '<label class="check small"><input type="checkbox" id="fqP" name="person"> Uus klient on eraisik</label>' : ''}
     <div class="tbl"><table class="lines"><thead><tr><th>Kirjeldus</th><th>Kogus</th><th>Ühik</th><th>Hind</th><th>KM</th>${revAccs.length > 1 ? '<th>Tulukonto</th>' : ''}<th class="num">Summa</th><th></th></tr></thead><tbody id="lnBody">${d.lines.map((l) => lineRow(l, revAccs)).join('')}</tbody></table></div>
     <div><button type="button" class="btn sm" data-act="addline">Lisa rida</button></div>
     <div class="totals" id="invTot"></div>
@@ -317,12 +318,8 @@ async function saveQuoteForm(f) {
   if (!name) { err.textContent = 'Lisa kliendi nimi.'; return; }
   if (!L.length || L.some((l) => !l.description)) { err.textContent = 'Igal real peab olema kirjeldus.'; return; }
   if (f.valid_until.value < f.date.value) { err.textContent = 'Kehtivus ei saa lõppeda enne pakkumise kuupäeva.'; return; }
-  const person = !!f.person?.checked;
   await act(async () => {
-    let contactId;
-    const ex = D().contacts.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
-    if (ex) contactId = await findOrCreateContact(name, 'client');
-    else contactId = (await api.saveContact({ company_id: S.cid, name, kind: 'client', person })).id;
+    const contactId = await saveClientContact(f);
     return api.saveQuote({ id: f.dataset.id || null, company_id: S.cid, no: f.no.value.trim(), contact_id: contactId, contact_name: name,
       date: f.date.value, valid_until: f.valid_until.value, notes: f.notes.value.trim(), lines: L });
   }, 'Pakkumine salvestatud', (id) => { closeModal(); openQuote(id); });
@@ -592,29 +589,81 @@ function auditTable() {
 // ====================================================================
 // Dialoogid
 // ====================================================================
+const UNITS = [['tk', 'tk'], ['h', 'h (tund)']];
+const decStr = (v) => (v === '' || v == null ? '' : String(+num(v)).replace('.', ','));
+const unitOpts = (u) => {
+  const cur = u || 'tk';
+  const list = UNITS.some(([k]) => k === cur) ? UNITS : [...UNITS, [cur, cur]];
+  return list.map(([k, t]) => `<option value="${esc(k)}" ${k === cur ? 'selected' : ''}>${esc(t)}</option>`).join('');
+};
+
+/** Kliendi plokk arve ja pakkumise vormil: nimi, liik (ettevõte/eraisik) ja kontaktandmed. */
+function clientPanel(name, idp) {
+  const c = D().contacts.find((x) => x.name === name) || {};
+  const person = !!c.person;
+  return `<div class="client">
+    <div class="row" style="align-items:flex-end">
+      <label class="field" style="flex:1;min-width:200px"><span>Klient</span><input id="${idp}C" name="client" list="contactsDL" value="${esc(name)}" required autocomplete="off" data-client-name></label>
+      <div class="seg" role="radiogroup" aria-label="Kliendi liik">
+        <label><input type="radio" name="ctype" value="company" ${person ? '' : 'checked'}><span>Ettevõte</span></label>
+        <label><input type="radio" name="ctype" value="person" ${person ? 'checked' : ''}><span>Eraisik</span></label>
+      </div>
+    </div>
+    <div class="fgrid">
+      <label class="field" data-only="company" ${person ? 'hidden' : ''}><span>Registrikood</span><input id="${idp}cR" name="c_regcode" value="${esc(c.regcode || '')}" inputmode="numeric"></label>
+      <label class="field" data-only="company" ${person ? 'hidden' : ''}><span>KMKR number</span><input id="${idp}cV" name="c_vatno" value="${esc(c.vatno || '')}"></label>
+      <label class="field"><span>Aadress</span><input id="${idp}cA" name="c_address" value="${esc(c.address || '')}"></label>
+      <label class="field"><span>E-post</span><input id="${idp}cE" name="c_email" type="email" value="${esc(c.email || '')}"></label>
+      <label class="field"><span>Telefon</span><input id="${idp}cT" name="c_phone" type="tel" value="${esc(c.phone || '')}"></label>
+    </div></div>`;
+}
+function applyClientType(f) {
+  const person = f.ctype?.value === 'person';
+  f.querySelectorAll('[data-only=company]').forEach((el) => { el.hidden = person; });
+}
+function fillClient(f) {
+  const c = D().contacts.find((x) => x.name.trim().toLowerCase() === f.client.value.trim().toLowerCase());
+  if (!c) return;
+  f.c_regcode.value = c.regcode || ''; f.c_vatno.value = c.vatno || ''; f.c_address.value = c.address || '';
+  f.c_email.value = c.email || ''; f.c_phone.value = c.phone || '';
+  f.querySelector(`input[name=ctype][value=${c.person ? 'person' : 'company'}]`).checked = true;
+  applyClientType(f);
+}
+/** Salvestab kliendi andmed (uus või olemasolev) ja tagastab id. */
+async function saveClientContact(f) {
+  const name = f.client.value.trim(), person = f.ctype.value === 'person';
+  const row = { name, person, address: f.c_address.value.trim(), email: f.c_email.value.trim(), phone: f.c_phone.value.trim() };
+  if (!person) { row.regcode = f.c_regcode.value.trim(); row.vatno = f.c_vatno.value.trim(); }
+  const ex = D().contacts.find((c) => c.name.trim().toLowerCase() === name.toLowerCase());
+  if (ex) {
+    await api.saveContact({ id: ex.id, ...row, name: ex.name, kind: ex.kind === 'supplier' ? 'both' : ex.kind });
+    return ex.id;
+  }
+  return (await api.saveContact({ company_id: S.cid, kind: 'client', ...row })).id;
+}
+
 function lineRow(l, revAccs) {
   return `<tr class="ln"><td style="min-width:170px"><input name="description" value="${esc(l.description)}" placeholder="Teenus või kaup" aria-label="Kirjeldus"></td>
-  <td style="width:76px"><input name="qty" type="number" step="any" value="${esc(l.qty)}" aria-label="Kogus"></td>
-  <td style="width:66px"><input name="unit" value="${esc(l.unit || 'tk')}" aria-label="Ühik"></td>
-  <td style="width:104px"><input name="price" type="number" step="0.0001" value="${esc(l.price)}" aria-label="Hind km-ta"></td>
+  <td style="width:78px"><input name="qty" inputmode="decimal" value="${esc(decStr(l.qty))}" placeholder="1" aria-label="Kogus" class="mono"></td>
+  <td style="width:116px"><select name="unit" aria-label="Ühik">${unitOpts(l.unit)}</select></td>
+  <td style="width:104px"><input name="price" inputmode="decimal" value="${esc(decStr(l.price))}" placeholder="0,00" aria-label="Hind km-ta" class="mono"></td>
   <td style="width:82px"><select name="vat_rate" aria-label="KM määr">${vatOpts(l.vat_rate)}</select></td>
   ${revAccs.length > 1 ? `<td style="width:150px"><select name="account" aria-label="Tulukonto">${accOpts(revAccs, l.account || '4000')}</select></td>` : ''}
   <td class="num lsum mono" style="width:92px"></td>
   <td style="width:34px"><button type="button" class="btn ghost sm" data-act="rmline" aria-label="Eemalda rida">✕</button></td></tr>`;
 }
 function invoiceForm(inv) {
-  const c = D().company, t = today(), revAccs = accountsOfType('R');
+  const c = D().company, t = today(), revAccs = revenueChoices();
   const d = inv ? { ...inv, lines: D().linesBy[inv.id] || [] }
     : { no: nextInvoiceNo(D().invoices, c.invoice_prefix), date: t, due: addDays(t, c.payment_term_days ?? 14), contact_name: '', buyer_ref: '', notes: '',
       lines: [{ description: '', qty: 1, unit: 'tk', price: '', vat_rate: c.vat_payer ? 24 : 0, account: '4000' }] };
   openModal(`${mHead(inv ? `Muuda mustandit ${esc(inv.no)}` : 'Uus müügiarve')}
   <form data-form="invoice" data-id="${inv ? inv.id : ''}"><div class="body form">
+    ${clientPanel(d.contact_name, 'fi')}
     <div class="fgrid">
-      <label class="field"><span>Klient</span><input id="fiC" name="client" list="contactsDL" value="${esc(d.contact_name)}" required autocomplete="off"></label>
       <label class="field"><span>Arve number</span><input id="fiN" name="no" value="${esc(d.no)}" required class="mono"></label>
       <label class="field"><span>Kuupäev</span><input id="fiD" name="date" type="date" value="${d.date}" required></label>
       <label class="field"><span>Maksetähtaeg</span><input id="fiDue" name="due" type="date" value="${d.due}" required></label>
-      <label class="field"><span>Ostja viide / tellimuse nr</span><input id="fiBR" name="buyer_ref" value="${esc(d.buyer_ref || '')}" placeholder="Vabatahtlik"></label>
     </div>${contactList()}
     <div class="tbl"><table class="lines"><thead><tr><th>Kirjeldus</th><th>Kogus</th><th>Ühik</th><th>Hind</th><th>KM</th>${revAccs.length > 1 ? '<th>Tulukonto</th>' : ''}<th class="num">Summa</th><th></th></tr></thead><tbody id="lnBody">${d.lines.map((l) => lineRow(l, revAccs)).join('')}</tbody></table></div>
     <div><button type="button" class="btn sm" data-act="addline">Lisa rida</button></div>
@@ -644,11 +693,12 @@ async function saveInvoice(f, mode) {
   const name = f.client.value.trim();
   if (!name) { err.textContent = 'Lisa kliendi nimi.'; return; }
   if (!L.length || L.some((l) => !l.description)) { err.textContent = 'Igal arve real peab olema kirjeldus.'; return; }
+  if (L.some((l) => !l.qty)) { err.textContent = 'Igal real peab olema kogus.'; return; }
   if (f.due.value < f.date.value) { err.textContent = 'Maksetähtaeg ei saa olla enne arve kuupäeva.'; return; }
   await act(async () => {
-    const contactId = await findOrCreateContact(name, 'client');
+    const contactId = await saveClientContact(f);
     const id = await api.saveInvoiceDraft({ id: f.dataset.id || null, company_id: S.cid, no: f.no.value.trim(), contact_id: contactId, contact_name: name,
-      date: f.date.value, due: f.due.value, buyer_ref: f.buyer_ref.value.trim(), notes: f.notes.value.trim(), lines: L });
+      date: f.date.value, due: f.due.value, buyer_ref: D().invById[f.dataset.id]?.buyer_ref || '', notes: f.notes.value.trim(), lines: L });
     if (mode === 'issue') await api.issueInvoice(id);
     return id;
   }, mode === 'issue' ? 'Arve kinnitatud ja kirjendatud' : 'Mustand salvestatud', (id) => { closeModal(); openInvoice(id); });
@@ -768,11 +818,12 @@ function contactForm(c) {
     <label class="field"><span>Liik</span><select id="fcT" name="kind"><option value="client" ${d.kind === 'client' ? 'selected' : ''}>Klient</option><option value="supplier" ${d.kind === 'supplier' ? 'selected' : ''}>Tarnija</option><option value="both" ${d.kind === 'both' ? 'selected' : ''}>Klient ja tarnija</option></select></label>
     <label class="check" style="grid-column:1/-1"><input type="checkbox" id="fcP" name="person" ${d.person ? 'checked' : ''}> Eraisik (mitte ettevõte)</label>
     <label class="field"><span>Registrikood või isikukood</span><input id="fcR" name="regcode" value="${esc(d.regcode)}" inputmode="numeric"></label>
-    <label class="field"><span>KMKR number</span><input id="fcV" name="vatno" value="${esc(d.vatno)}"></label>
+    <label class="field" data-only="company" ${d.person ? 'hidden' : ''}><span>KMKR number</span><input id="fcV" name="vatno" value="${esc(d.vatno)}"></label>
     <label class="field"><span>E-post</span><input id="fcE" name="email" type="email" value="${esc(d.email)}"></label>
+    <label class="field"><span>Telefon</span><input id="fcTel" name="phone" type="tel" value="${esc(d.phone || '')}"></label>
     <label class="field"><span>Aadress</span><input id="fcA" name="address" value="${esc(d.address)}" placeholder="Tänav 1, 10111 Tallinn"></label>
-    <label class="field"><span>Peppol ID (vabatahtlik)</span><input id="fcPP" name="peppol_id" value="${esc(d.peppol_id || '')}" placeholder="0191:registrikood" class="mono"></label>
-    <label class="check" style="align-self:end;padding-bottom:8px"><input type="checkbox" id="fcEI" name="einvoice" ${d.einvoice ? 'checked' : ''}> Soovib e-arveid</label>
+    <label class="field" data-only="company" ${d.person ? 'hidden' : ''}><span>Peppol ID (vabatahtlik)</span><input id="fcPP" name="peppol_id" value="${esc(d.peppol_id || '')}" placeholder="0191:registrikood" class="mono"></label>
+    <label class="check" data-only="company" ${d.person ? 'hidden' : ''} style="align-self:end;padding-bottom:8px"><input type="checkbox" id="fcEI" name="einvoice" ${d.einvoice ? 'checked' : ''}> Soovib e-arveid</label>
   </div><div class="err" id="fErr"></div></div>
   <footer>${c && canWrite() ? `<span class="row" id="delZone"><button type="button" class="btn danger" data-act="contact-del-ask" data-id="${c.id}">Kustuta</button></span>` : '<span></span>'}<div class="row"><button type="button" class="btn" data-act="close">Loobu</button>${canWrite() ? '<button class="btn primary" type="submit">Salvesta</button>' : ''}</div></footer></form>`);
 }
@@ -944,7 +995,7 @@ const ACTS = {
   'contact-del-ask': (b) => confirmZone(b, 'Kustutada partner? Dokumendid jäävad alles.', 'contact-del'),
   'contact-del': (b) => act(() => api.deleteContact(b.dataset.id), 'Partner kustutatud', () => closeModal()),
   'new-jr': () => journalForm(),
-  addline: () => { const tb = sheet.querySelector('#lnBody'); tb.insertAdjacentHTML('beforeend', lineRow({ description: '', qty: 1, unit: 'tk', price: '', vat_rate: D().company.vat_payer ? 24 : 0, account: '4000' }, accountsOfType('R'))); recalcInvoice(sheet.querySelector('form')); tb.lastElementChild.querySelector('input').focus(); },
+  addline: () => { const tb = sheet.querySelector('#lnBody'); tb.insertAdjacentHTML('beforeend', lineRow({ description: '', qty: 1, unit: 'tk', price: '', vat_rate: D().company.vat_payer ? 24 : 0, account: '4000' }, revenueChoices())); recalcInvoice(sheet.querySelector('form')); tb.lastElementChild.querySelector('input').focus(); },
   rmline: (b) => { const f = b.closest('form'); if (f.querySelectorAll('tr.ln').length > 1) { b.closest('tr').remove(); recalcInvoice(f); } },
   addjl: () => sheet.querySelector('#jlBody').insertAdjacentHTML('beforeend', jrRow({ account: '1020' })),
   rmjl: (b) => { const f = b.closest('form'); if (f.querySelectorAll('tr.jl').length > 2) { b.closest('tr').remove(); recalcJournal(f); } },
@@ -1059,7 +1110,7 @@ document.addEventListener('submit', async (e) => {
     }
     if (t === 'contact') {
       const row = { company_id: S.cid, name: f.cname.value.trim(), kind: f.kind.value, regcode: f.regcode.value.trim(), vatno: f.vatno.value.trim(), email: f.email.value.trim(),
-        address: f.address.value.trim(), peppol_id: f.peppol_id.value.trim(), einvoice: f.einvoice.checked, person: f.person.checked };
+        address: f.address.value.trim(), peppol_id: f.peppol_id.value.trim(), einvoice: f.einvoice.checked && !f.person.checked, person: f.person.checked, phone: f.phone.value.trim() };
       if (f.dataset.id) { row.id = f.dataset.id; delete row.company_id; }
       return await act(() => api.saveContact(row), 'Partner salvestatud', () => closeModal());
     }
@@ -1100,6 +1151,9 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   const el = e.target;
+  if (el.matches?.('[data-client-name]')) { fillClient(el.form); return; }
+  if (el.name === 'ctype') { applyClientType(el.form); return; }
+  if (el.id === 'fcP') { el.form.querySelectorAll('[data-only=company]').forEach((x) => { x.hidden = el.checked; }); return; }
   if (el.id === 'bankFile') { loadBankFile(el.files[0]); return; }
   if (el.id === 'impFile') { importFile(el.files[0]); el.value = ''; return; }
   if (el.id === 'logoFile') { uploadLogo(el.files[0]); el.value = ''; return; }

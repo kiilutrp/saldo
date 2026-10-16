@@ -80,6 +80,8 @@ Andmed asuvad sinu enda Supabase'i andmebaasis (PostgreSQL, Frankfurt). Veebileh
 
 **0004_quotes.sql** (16.10.2026): hinnapakkumised ja eraisikust kliendid.
 
+**0005_contact_phone.sql** (16.10.2026): kliendi telefon.
+
 
 Kui tarkvarast tuleb uus versioon, mis muudab andmebaasi, lisandub kausta `supabase/migrations/` uus fail (nt `0003_...sql`). Käivita see Supabase'i SQL Editoris samamoodi nagu esimesed. Veebileht uueneb GitHub Pagesis automaatselt.
 

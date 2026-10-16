@@ -20,6 +20,7 @@ export function friendly(error) {
   if (/Password should be at least/i.test(m)) return 'Parool peab olema vähemalt 8 märki pikk.';
   if (/rate limit/i.test(m)) return 'Liiga palju katseid. Oota natuke ja proovi uuesti.';
   if (/Invalid TOTP|Invalid MFA|invalid.*code/i.test(m)) return 'Kood ei sobi. Kontrolli, et telefoni kellaaeg on õige, ja proovi uuesti.';
+  if (/column .*phone|phone.*column|'phone'/i.test(m)) return 'Telefoni salvestamiseks käivita Supabase\'is fail 0005_contact_phone.sql.';
   if (/duplicate key.*invoices_company_id_no/i.test(m)) return 'Selle numbriga arve on juba olemas.';
   if (/permission denied|row-level security/i.test(m)) return 'Sul pole selleks õigust.';
   if (/violates foreign key.*contacts/i.test(m)) return 'Partner on dokumentidega seotud.';
