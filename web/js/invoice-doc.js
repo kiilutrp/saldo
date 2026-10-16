@@ -37,9 +37,9 @@ tbody tr:last-child td{border-bottom:1px solid #C9D0DA}
 .totals{display:grid;grid-template-columns:1fr auto;gap:5px 14px}
 .totals span:nth-child(odd){color:#5B6575}
 .totals span:nth-child(even){text-align:right}
-.grand{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;padding:12px 14px;background:var(--accent);color:#fff;border-radius:8px}
-.grand b{font-size:12px;letter-spacing:.08em;text-transform:uppercase}
-.grand .mono{font-size:21px;font-weight:600}
+.grand{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:10px;border-top:1.5px solid #141A24}
+.grand b{font-size:14px;font-weight:700}
+.grand .mono{font-size:18px;font-weight:600}
 .pay{border:1.5px solid var(--accent);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:repeat(4,auto);gap:4px 18px;justify-content:space-between}
 .pay .lbl{margin:0}
 .pay .v{font-size:14px;font-weight:600}
