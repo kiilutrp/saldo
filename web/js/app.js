@@ -878,7 +878,7 @@ const ACTS = {
   'design-preview': () => {
     const c = { ...D().company, invoice_color: document.getElementById('dColor')?.value || D().company.invoice_color };
     const t = today();
-    const sample = { no: nextInvoiceNo(D().invoices, c.invoice_prefix), kind: 'invoice', date: t, due: addDays(t, c.payment_term_days ?? 14), contact_name: 'Näidisklient OÜ', buyer_ref: '', notes: 'Täname koostöö eest!' };
+    const sample = { no: nextInvoiceNo(D().invoices, c.invoice_prefix), kind: 'invoice', date: t, due: addDays(t, c.payment_term_days ?? 14), contact_name: 'Näidisklient OÜ', buyer_ref: '', notes: '' };
     const lines = [{ description: 'Teenus', qty: 10, unit: 'h', price: 50, vat_rate: c.vat_payer ? 24 : 0 }, { description: 'Materjalid', qty: 2, unit: 'tk', price: 35, vat_rate: c.vat_payer ? 24 : 0 }];
     const html = invoiceDoc(sample, lines, c, { address: 'Näidistänav 5, 10111 Tallinn', regcode: '12345678' }, { accent: c.invoice_color });
     openModal(`${mHead('Arve näidis')}<div class="body"><iframe class="docframe" title="Arve näidis" srcdoc="${esc(html)}"></iframe></div>`);
